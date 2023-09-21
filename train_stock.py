@@ -17,14 +17,10 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 (If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
 """
 
-import datetime
-import glob
 import os
 import time
 import math
-from nose.tools import *
 import pickle
-import random
 from tqdm import tqdm
 from contextlib import nullcontext
 
@@ -112,10 +108,7 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
 
-def now():
-  return datetime.datetime.utcnow() # now is a datetime object
-ts = int(now().timestamp())
-torch.manual_seed(ts + seed_offset)
+torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
 device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
@@ -123,45 +116,9 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-# poor man's data loader, read everything into memory
-data_dir = "/data/stock/label/chatgpt/"
-fns = glob.glob(data_dir + "*.bin")
-print(len(fns), " files")
-trns = []
-vals = []
-tsts = []
-ONE_YEAR_DAY = 252
-ONE_YEAR_TOKENS = ONE_YEAR_DAY * STEP_SIZE
-assert_equal(block_size % STEP_SIZE, 0)
-FIRST_MARKER = 0  # of each row (price bar)
-for fn in fns:
-  arr = np.fromfile(fn, dtype=np.uint16)
-  if FIRST_MARKER == 0:
-    FIRST_MARKER = arr[0]
-  else:
-    assert_equal(FIRST_MARKER, arr[0])
-  # last 2 year, as val, tst data
-  assert_equal(len(arr) % STEP_SIZE, 0)
-  trns.append(arr[                                   : -2 * ONE_YEAR_TOKENS])
-  vals.append(arr[  -2 * ONE_YEAR_TOKENS - block_size: -1 * ONE_YEAR_TOKENS])
-  tsts.append(arr[  -1 * ONE_YEAR_TOKENS - block_size:                     ])
 
-def get_batch(split):
-    data = trns if split == 'train' else vals
-    # random pick one symbol
-    data = random.choice(data)
-    ix = torch.randint( (len(data) - block_size) // STEP_SIZE, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[STEP_SIZE * (i  ) : STEP_SIZE * (i  )+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[STEP_SIZE * (i+1) : STEP_SIZE * (i+1)+block_size]).astype(np.int64)) for i in ix])
-    if device_type == 'cuda':
-        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    else:
-        x, y = x.to(device), y.to(device)
-    assert_equal(x.shape, y.shape)
-    assert_equal((x[:, 0] == FIRST_MARKER).sum(), batch_size)  # make sure we always take the arr at the row (bar) boundary
-    assert_equal((y[:, 0] == FIRST_MARKER).sum(), batch_size)
-    return x, y  # x.shape torch.Size([64, 256]) y.shape torch.Size([64, 256])
+from util import *
+read_data()
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
