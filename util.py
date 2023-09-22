@@ -1,11 +1,13 @@
 import datetime
 import glob
 import random
+import numpy as np
 from nose.tools import *
+import pdb
 
 def now():
   return datetime.datetime.utcnow() # now is a datetime object
-ts = int(now().timestamp())
+# ts = int(now().timestamp())
 
 # poor man's data loader, read everything into memory
 data_dir = "/data/stock/label/chatgpt/"
@@ -13,14 +15,15 @@ data_dir = "/data/stock/label/chatgpt/"
 trns = []
 vals = []
 tsts = []
+FIRST_MARKER = 0  # of each row (price bar)
 
 def read_data():
+  global FIRST_MARKER
   fns = glob.glob(data_dir + "*.bin")
   print(len(fns), " files")
   ONE_YEAR_DAY = 252
   ONE_YEAR_TOKENS = ONE_YEAR_DAY * STEP_SIZE
   assert_equal(block_size % STEP_SIZE, 0)
-  FIRST_MARKER = 0  # of each row (price bar)
   for fn in fns:
     arr = np.fromfile(fn, dtype=np.uint16)
     if FIRST_MARKER == 0:
@@ -57,3 +60,7 @@ def get_batch(split):
     assert_equal((x[:, 0] == FIRST_MARKER).sum(), batch_size)  # make sure we always take the arr at the row (bar) boundary
     assert_equal((y[:, 0] == FIRST_MARKER).sum(), batch_size)
     return x, y  # x.shape torch.Size([64, 256]) y.shape torch.Size([64, 256])
+
+def decode_stock(pred):
+  # 3773
+  pdb.set_trace()
