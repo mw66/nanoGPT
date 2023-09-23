@@ -117,7 +117,7 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 
-from util import *
+exec(open('util.py').read())  # basically: from util import *
 read_data()
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
