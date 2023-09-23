@@ -16,9 +16,9 @@ wandb_run_name = 'mini_gpt'
 dataset = 'stock_char'
 gradient_accumulation_steps = 2
 
-LOOK_BACK = 84  # one quarter
-STEP_SIZE = 28  # tokens per row (price bar)
-batch_size = 8  # 64
+LOOK_BACK  = 105  # one quarter 84
+STEP_SIZE  =   5  # tokens per row (price bar) 28
+batch_size =  64  # 64 8
 block_size = STEP_SIZE * LOOK_BACK # context of up to 252 previous bars' *tokens*
 
 # baby GPT model :)
@@ -39,4 +39,4 @@ warmup_iters = 100 # not super necessary potentially
 # device = 'cpu'  # run on cpu only
 # compile = False # do not torch compile the model
 
-init_from = 'resume' # 'scratch' or 'resume' or 'gpt2*'
+init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
