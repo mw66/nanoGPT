@@ -15,7 +15,7 @@ data_dir = "/data/stock/label/chatgpt/"
 trns = []
 vals = []
 tsts = []
-FIRST_MARKER = 0  # of each row (price bar)
+FIRST_MARKER = -1  # of each row (price bar)
 
 def read_data():
   global FIRST_MARKER
@@ -26,10 +26,10 @@ def read_data():
   assert_equal(block_size % STEP_SIZE, 0)
   for fn in fns:
     arr = np.fromfile(fn, dtype=np.uint16)
-    if FIRST_MARKER == 0:
-      FIRST_MARKER = arr[0]
+    if FIRST_MARKER == -1:
+      FIRST_MARKER = arr[-1]
     else:
-      assert_equal(FIRST_MARKER, arr[0])
+      assert_equal(FIRST_MARKER, arr[-1])
     # last 2 year, as val, tst data
     assert_equal(len(arr) % STEP_SIZE, 0)
     trns.append(arr[                                   : -2 * ONE_YEAR_TOKENS])
@@ -46,19 +46,51 @@ def shuffle_data():
 
 def get_batch(split):
     data = trns if split == 'train' else vals
-    # random pick one symbol
-    data = random.choice(data)
-    ix = torch.randint( (len(data) - block_size) // STEP_SIZE, (batch_size,))
-    x = torch.stack([torch.from_numpy((data[STEP_SIZE * (i  ) : STEP_SIZE * (i  )+block_size]).astype(np.int64)) for i in ix])
-    y = torch.stack([torch.from_numpy((data[STEP_SIZE * (i+1) : STEP_SIZE * (i+1)+block_size]).astype(np.int64)) for i in ix])
+    data = random.choice(data)  # random pick one symbol
+
+    ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i  :i  +block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
+
+
+def get_batch_with_step(split):
+    data = trns if split == 'train' else vals
+    data = random.choice(data)  # random pick one symbol
+
+    # we only train the close price, but need in two steps (dollar, cent)
+    bs = batch_size // 2
+    assert_equal(batch_size, bs * 2)  # must be an even number
+
+    ix = torch.randint(1, (len(data) - block_size) // STEP_SIZE, (bs,))
+    xs = []
+    ys = []
+    for i in ix:
+      x_start = STEP_SIZE * (i  )
+      y_start = STEP_SIZE * (i+1)
+      # seen previous bar's dollar, predict the next cent
+      xs.append(torch.from_numpy(data[x_start-1: x_start-1+block_size].astype(np.int64)))  # cent
+      ys.append(torch.from_numpy(data[y_start-1: y_start-1+block_size].astype(np.int64)))
+
+      # seen full previous bar, predict the next dollar
+      xs.append(torch.from_numpy(data[x_start  : x_start+  block_size].astype(np.int64)))  # dollar
+      ys.append(torch.from_numpy(data[y_start  : y_start+  block_size].astype(np.int64)))
+
+    x = torch.stack(xs)
+    y = torch.stack(ys)
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
     assert_equal(x.shape, y.shape)
-    assert_equal((x[:, 0] == FIRST_MARKER).sum(), batch_size)  # make sure we always take the arr at the row (bar) boundary
-    assert_equal((y[:, 0] == FIRST_MARKER).sum(), batch_size)
+    assert_equal((x[:, 0] == FIRST_MARKER).sum(), bs)  # make sure we always take the arr at the row (bar) boundary
+    assert_equal((y[:, 0] == FIRST_MARKER).sum(), bs)
     return x, y  # x.shape torch.Size([64, 256]) y.shape torch.Size([64, 256])
 
 def decode_stock(pred):
