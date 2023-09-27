@@ -16,15 +16,15 @@ wandb_run_name = 'mini_gpt'
 dataset = 'stock_char'
 gradient_accumulation_steps = 2
 
-LOOK_BACK  = 105  # one quarter 84
+LOOK_BACK  = 252  # one quarter 84
 STEP_SIZE  =   5  # tokens per row (price bar) 28
 batch_size =  64  # 64 8
 block_size = STEP_SIZE * LOOK_BACK # context of up to 252 previous bars' *tokens*
 
 # baby GPT model :)
-n_layer = 6
+n_layer = 2
 n_head = 6
-n_embd = 384
+n_embd = 252
 dropout = 0.2
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
