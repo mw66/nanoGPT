@@ -59,6 +59,24 @@ def get_batch(split):
     return x, y
 
 
+# return data of all the symbols for the same day
+def get_batch_tst(pred_day_i=-1):
+  xs = []
+  ys = []
+  for data in tsts:  # each stock
+    # always translate to positive array index, to make array slice indices always work as expected
+    if pred_day_i < 0:
+      pred_day_i += len(data) // STEP_SIZE
+    x_start = STEP_SIZE * (pred_day_i+1) - block_size  # to make the convention that: pred_day_i=-1 for live day work
+    y_start = STEP_SIZE + x_start
+    x_end = x_start + block_size
+    y_end = y_start + block_size
+    xs.append(torch.from_numpy(data[x_start: x_end].astype(np.int64)))
+    ys.append(torch.from_numpy(data[y_start: y_end].astype(np.int64)))
+
+  return get_batch_xy(xs, ys)
+
+
 def get_batch_with_step(split):
     data = trns if split == 'train' else vals
     data = random.choice(data)  # random pick one symbol
@@ -81,6 +99,8 @@ def get_batch_with_step(split):
       xs.append(torch.from_numpy(data[x_start  : x_start+  block_size].astype(np.int64)))  # dollar
       ys.append(torch.from_numpy(data[y_start  : y_start+  block_size].astype(np.int64)))
 
+
+def get_batch_xy(xs, ys):
     x = torch.stack(xs)
     y = torch.stack(ys)
     if device_type == 'cuda':
@@ -88,10 +108,11 @@ def get_batch_with_step(split):
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
-    assert_equal(x.shape, y.shape)
-    assert_equal((x[:, 0] == FIRST_MARKER).sum(), bs)  # make sure we always take the arr at the row (bar) boundary
-    assert_equal((y[:, 0] == FIRST_MARKER).sum(), bs)
+    assert_equal((x[:, -1] == FIRST_MARKER).sum(), len(x))  # make sure we always take the arr at the row (bar) boundary
+    assert_equal((y[:, -1] == FIRST_MARKER).sum(), len(y))
+    assert_equal(x.shape, y.shape)  # not for live data
     return x, y  # x.shape torch.Size([64, 256]) y.shape torch.Size([64, 256])
+
 
 def decode_stock(pred):
   # 3773
